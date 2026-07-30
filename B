@@ -1,0 +1,259 @@
+-- [[ BLADE BALL ULTIMATE SCRIPT (5 FUNCTIONS) ]] --
+-- UI Library: Fluent
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+-- สร้างหน้าต่างหลัก GUI
+local Window = Fluent:CreateWindow({
+    Title = "BLADE BALL // ULTIMATE HUB",
+    SubTitle = "by AI Assistant",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true, 
+    Theme = "Darker",
+    MinimizeKey = Enum.KeyCode.RightControl -- กดปุ่ม Right Control เพื่อ ซ่อน/เปิด หน้าต่าง
+})
+
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main Combat", Icon = "swords" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+local Options = Fluent.Options
+
+----------------------------------------------------
+-- VARIABLE & STATE
+----------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local LocalPlayer = Players.LocalPlayer
+
+local Config = {
+    AutoParry = false,
+    ParryDistance = 30,
+    SpamParry = false,
+    TargetAimbot = false,
+    AutoAbility = false,
+    FPSBooster = false
+}
+
+----------------------------------------------------
+-- HELPER FUNCTIONS
+----------------------------------------------------
+local function GetBall()
+    for _, obj in pairs(workspace:GetChildren()) do
+        if obj:IsA("Part") and (obj.Name == "Ball" or obj:FindFirstChild("RealBall")) then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function TriggerParry()
+    -- จำลองการกดปุ่ม Block (F หรือ Click)
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    task.wait(0.01)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+end
+
+----------------------------------------------------
+-- 5 MAIN FUNCTIONS LOGIC
+----------------------------------------------------
+
+-- 1. Auto Parry (คำนวณระยะทางและความเร็วลูกบอลอัตโนมัติ)
+RunService.PreRender:Connect(function()
+    if not Config.AutoParry then return end
+    
+    local ball = GetBall()
+    if not ball then return end
+    
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = character.HumanoidRootPart
+    local ballPosition = ball.Position
+    local ballVelocity = ball.AssemblyLinearVelocity
+    local distance = (hrp.Position - ballPosition).Magnitude
+    
+    -- เช็คว่าลูกบอลกำลังพุ่งมาหาเราหรือไม่
+    local dotProduct = (hrp.Position - ballPosition).Unit:Dot(ballVelocity.Unit)
+    
+    -- ปรับระยะตีตามความเร็วลูกบอล (Dynamic Distance)
+    local dynamicDistance = Config.ParryDistance + (ballVelocity.Magnitude * 0.1)
+    
+    if distance <= dynamicDistance and dotProduct > 0.3 then
+        TriggerParry()
+    end
+end)
+
+-- 2. Spam Parry (สแปมบล็อกระยะประชิดเมื่อเข้าสู่ภาวะดวล 1v1)
+task.spawn(function()
+    while task.wait(0.02) do
+        if Config.SpamParry then
+            local ball = GetBall()
+            if ball then
+                local character = LocalPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    local dist = (character.HumanoidRootPart.Position - ball.Position).Magnitude
+                    if dist <= 15 then -- ระยะประชิด
+                        TriggerParry()
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- 3. Target Aimbot (หันหน้าใส่คนดวลทันทีที่บล็อกบอล)
+RunService.RenderStepped:Connect(function()
+    if not Config.TargetAimbot then return end
+    
+    local ball = GetBall()
+    if not ball then return end
+    
+    -- ล็อคเป้าหมายไปที่คนที่บอลกำลังพุ่งไปหา หรือผู้เล่นที่ใกล้ที่สุด
+    local character = LocalPlayer.Character
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        local targetPlayer = nil
+        local closestDist = math.huge
+        
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local d = (character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                if d < closestDist then
+                    closestDist = d
+                    targetPlayer = p
+                end
+            end
+        end
+        
+        if targetPlayer and targetPlayer.Character then
+            local targetPos = targetPlayer.Character.HumanoidRootPart.Position
+            character.HumanoidRootPart.CFrame = CFrame.new(character.HumanoidRootPart.Position, Vector3.new(targetPos.X, character.HumanoidRootPart.Position.Y, targetPos.Z))
+        end
+    end
+end)
+
+-- 4. Auto Use Ability (กดใช้สกิลใส่ออโต้เมื่อบอลเข้าใกล้)
+task.spawn(function()
+    while task.wait(0.1) do
+        if Config.AutoAbility then
+            local ball = GetBall()
+            if ball then
+                local character = LocalPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    local dist = (character.HumanoidRootPart.Position - ball.Position).Magnitude
+                    if dist <= Config.ParryDistance + 5 then
+                        -- กดปุ่ม Q เพื่อใช้ Ability
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+                        task.wait(0.05)
+                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- 5. FPS Booster & Anti-Lag (ลบเอฟเฟกต์/เงา เพิ่มความลื่นเพื่อการบล็อกที่แม่นยำ)
+local function ToggleFPSBooster(enable)
+    local Lighting = game:GetService("Lighting")
+    if enable then
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.Material = Enum.Material.SmoothPlastic
+            elseif v:IsA("Decal") or v:IsA("Texture") then
+                v:Destroy()
+            end
+        end
+    end
+end
+
+----------------------------------------------------
+-- GUI ELEMENTS (CONTROLS)
+----------------------------------------------------
+
+-- Function 1
+local Toggle1 = Tabs.Main:AddToggle("AutoParry", {Title = "1. Auto Parry (ออโต้ปัดบอล)", Default = false })
+Toggle1:OnChanged(function(Value)
+    Config.AutoParry = Value
+end)
+
+local Slider1 = Tabs.Main:AddSlider("ParryDist", {
+    Title = "ระยะปัดบอล (Parry Distance)",
+    Default = 30,
+    Min = 10,
+    Max = 80,
+    Rounding = 0,
+    Callback = function(Value)
+        Config.ParryDistance = Value
+    end
+})
+
+-- Function 2
+local Toggle2 = Tabs.Main:AddToggle("SpamParry", {Title = "2. Clash Spam Parry (สแปมปัดบอลระยะประชิด)", Default = false })
+Toggle2:OnChanged(function(Value)
+    Config.SpamParry = Value
+end)
+
+-- Function 3
+local Toggle3 = Tabs.Main:AddToggle("TargetAimbot", {Title = "3. Target Lock Aimbot (ล็อคหน้าใส่คู่ดวล)", Default = false })
+Toggle3:OnChanged(function(Value)
+    Config.TargetAimbot = Value
+end)
+
+-- Function 4
+local Toggle4 = Tabs.Main:AddToggle("AutoAbility", {Title = "4. Auto Use Ability (ออโต้ใช้สกิลกด Q)", Default = false })
+Toggle4:OnChanged(function(Value)
+    Config.AutoAbility = Value
+end)
+
+-- Function 5
+local Toggle5 = Tabs.Main:AddToggle("FPSBooster", {Title = "5. FPS Booster (ลบเงา/เอฟเฟกต์ เพิ่ม FPS)", Default = false })
+Toggle5:OnChanged(function(Value)
+    Config.FPSBooster = Value
+    ToggleFPSBooster(Value)
+end)
+
+----------------------------------------------------
+-- UI OPEN/CLOSE TOGGLE BUTTON (ปุ่มเปิด-ปิด หน้าต่างบนจอ)
+----------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+local ToggleBtn = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+ScreenGui.Name = "BladeBallUI_Toggle"
+ScreenGui.Parent = game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+
+ToggleBtn.Name = "ToggleButton"
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+ToggleBtn.Position = UDim2.new(0.02, 0, 0.2, 0)
+ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Text = "HUB"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextSize = 14.000
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true -- สามารถลากปุ่มไปมาบนจอได้
+
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = ToggleBtn
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.RightControl, false, game)
+    task.wait(0.01)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.RightControl, false, game)
+end)
+
+-- Notification แจ้งเตือนเมื่อโหลดสคริปต์เสร็จ
+Fluent:Notify({
+    Title = "Blade Ball Hub Loaded!",
+    Content = "กดปุ่ม HUB บนหน้าจอ หรือกด Right-Control เพื่อเปิด/ปิด GUI",
+    Duration = 5
+})
